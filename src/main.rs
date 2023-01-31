@@ -1,20 +1,28 @@
+use std::path::PathBuf;
+
 use clap::{Parser, command, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author = "meritozh")]
 struct Args {
     #[command(subcommand)]
-    command: Option<Commands>
+    command: Command
 }
 
 #[derive(Subcommand, Debug)]
-enum Commands {
+enum Command {
+    #[command(about = "Normalize file name, convert NFD to NFC")]
     Normalize {
-        #[arg(long, short)]
-        path: String
+        #[arg(short, long)]
+        path: PathBuf
     }
 }
 
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+    
+    match args.command {
+      Command::Normalize { path } => {
+
+    } 
 }
