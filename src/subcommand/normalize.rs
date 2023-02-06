@@ -3,13 +3,13 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
+use cjk::is_simplified_chinese;
 use encoding_rs::{GBK, WINDOWS_1252};
 use std::{
     fs, io,
     path::{Path, PathBuf},
 };
 use unicode_normalization::{is_nfd, is_nfkd, UnicodeNormalization};
-use cjk::is_simplified_chinese;
 
 fn get_canonicalize_path(path: &Path) -> io::Result<PathBuf> {
     if path.starts_with("~") {
