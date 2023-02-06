@@ -42,7 +42,6 @@ fn convert_to_nfc(path: &Path) -> io::Result<PathBuf> {
 fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
     if let Some(filename) = path.file_name() {
         if filename != ".DS_Store" && !is_simplified_chinese(filename.to_str().unwrap()) {
-            // let latin1 = encode_latin1_lossy(filename.to_str().unwrap());
             let (latin1, _, _) = WINDOWS_1252.encode(filename.to_str().unwrap());
             let (gbk, _, _) = GBK.decode(latin1.as_ref());
             return Ok(path.with_file_name(gbk.to_string()));
