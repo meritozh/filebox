@@ -61,7 +61,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
 pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let pathbuf = get_canonicalize_path(path.as_ref());
     let walkdir = WalkDir::new(pathbuf);
-    let output = File::create("rename.filebox.commands")?;
+    let output = File::create("normalize.filebox.commands")?;
 
     let mut stream = BufWriter::new(output);
 
@@ -76,13 +76,11 @@ pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
                         let from = record.0.to_str()?;
                         let to = record.1.to_str()?;
 
-                        return stream
-                            .write_all(format!("{from}=>{to}\n").as_bytes())
-                            .ok();
+                        return stream.write_all(format!("{from}=>{to}\n").as_bytes()).ok();
                     });
             }
         });
-    
+
     stream.flush()?;
 
     Ok(())

@@ -1,5 +1,10 @@
+// Copyright (c) 2023 meritozh
+//
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::normalize;
+use filebox::subcommand::{normalize, run};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
@@ -14,11 +19,12 @@ enum Command {
     Normalize {
         #[arg(short, long)]
         path: String,
-        // #[arg(short, long, default_value_t = format!("./normalize_list.record"))]
-        // output: String,
+    },
 
-        // #[arg(short, long, default_value_t = true)]
-        // is_dry: bool
+    #[command(about = "Run commands from [<command>.filebox.commands] file")]
+    Run {
+        #[arg(short, long)]
+        path: String,
     },
 }
 
@@ -29,7 +35,6 @@ fn main() {
         Command::Normalize { path } => {
             normalize::all_to_nfc_and_utf8(path).unwrap();
         }
+        Command::Run { path } => run::run(path),
     }
-
-    println!("end")
 }
