@@ -82,6 +82,8 @@ pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
                     });
             }
         });
+    
+    stream.flush()?;
 
     Ok(())
 }
