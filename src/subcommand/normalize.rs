@@ -6,37 +6,36 @@
 use cjk::is_simplified_chinese;
 use encoding_rs::{GBK, WINDOWS_1252};
 use std::{
-    fs, io,
+    fs::File,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 use unicode_normalization::{is_nfd, is_nfkd, UnicodeNormalization};
+use walkdir::*;
 
-fn get_canonicalize_path(path: &Path) -> io::Result<PathBuf> {
+fn get_canonicalize_path(path: &Path) -> PathBuf {
     if path.starts_with("~") {
         let home: PathBuf = std::env::var("HOME").unwrap().into();
         let removed = path.strip_prefix("~").unwrap();
-        return Ok(home.join(removed));
+        return home.join(removed);
     }
 
     if !path.is_absolute() {
-        return Ok(path.canonicalize().unwrap());
+        return path.canonicalize().unwrap();
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        "Canonicalize all ready!",
-    ))
+    path.to_path_buf()
 }
 
-fn convert_to_nfc(path: &Path) -> io::Result<PathBuf> {
+fn convert_to_nfc(path: &Path) -> PathBuf {
     if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
         if is_nfd(filename) || is_nfkd(filename) {
             let normalized_filename = filename.nfc().collect::<String>();
-            return Ok(path.with_file_name(normalized_filename));
+            return path.with_file_name(normalized_filename);
         }
     }
 
-    Err(io::Error::new(io::ErrorKind::Other, "NFC all ready!"))
+    path.to_path_buf()
 }
 
 fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
@@ -51,35 +50,42 @@ fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
     Err(io::Error::new(io::ErrorKind::Other, "UTF-8 all ready"))
 }
 
-pub fn all_to_nfc_and_utf8<P: AsRef<Path> + Into<PathBuf>>(path: P) -> io::Result<()> {
-    get_canonicalize_path(path.as_ref())
-        .or(Ok(path.into()))
-        .map(|path| {
-            if path.is_dir() {
-                if let Ok(entry) = path.read_dir() {
-                    entry
-                        .filter_map(|e| {
-                            e.ok().and_then(|e| {
-                                let path = e.path();
-                                if path.is_file() {
-                                    return Some(path);
-                                }
-                                None
-                            })
-                        })
-                        .for_each(|file| {
-                            try_to_nfc_and_utf8(file.as_path());
-                        });
-                }
-            } else if path.is_file() {
-                try_to_nfc_and_utf8(path.as_ref());
-            }
-        })
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.'))
+        .unwrap_or(false)
 }
 
-fn try_to_nfc_and_utf8(path: &Path) {
-    _ = convert_to_nfc(path)
-        .or(Ok(path.to_path_buf()))
-        .and_then(|pathbuf| latin1_to_utf8(pathbuf.as_path()))
-        .and_then(|utf8| fs::rename(path, utf8))
+pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    let mut output = File::create("rename.filebox.commands")?;
+
+    let pathbuf = get_canonicalize_path(path.as_ref());
+    let walkdir = WalkDir::new(pathbuf);
+
+    walkdir
+        .into_iter()
+        .filter_entry(is_hidden)
+        .for_each(|file| {
+            if let Ok(pathbuf) = file.map(|f| f.into_path()) {
+                try_to_nfc_and_utf8(pathbuf.as_path())
+                    .ok()
+                    .and_then(|record| {
+                        let from = record.0.to_str()?;
+                        let to = record.1.to_str()?;
+
+                        return output
+                            .write_all(format!("{from} => {to}\n").as_bytes())
+                            .ok();
+                    });
+            }
+        });
+
+    Ok(())
+}
+
+fn try_to_nfc_and_utf8(path: &Path) -> io::Result<(&Path, PathBuf)> {
+    let nfc_pathbuf = convert_to_nfc(path);
+    latin1_to_utf8(nfc_pathbuf.as_path()).map(|new_pathbuf| (path, new_pathbuf))
 }

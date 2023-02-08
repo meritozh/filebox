@@ -14,6 +14,11 @@ enum Command {
     Normalize {
         #[arg(short, long)]
         path: String,
+        // #[arg(short, long, default_value_t = format!("./normalize_list.record"))]
+        // output: String,
+
+        // #[arg(short, long, default_value_t = true)]
+        // is_dry: bool
     },
 }
 
