@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-use cjk::is_simplified_chinese;
+use cjk::is_cjkish_codepoint;
 use encoding_rs::{GBK, WINDOWS_1252};
 use std::{
     fs::File,
@@ -40,7 +40,8 @@ fn convert_to_nfc(path: &Path) -> PathBuf {
 
 fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
     if let Some(filename) = path.file_name() {
-        if !is_simplified_chinese(filename.to_str().unwrap()) {
+        let filename_str = filename.to_str().unwrap();
+        if !guess_is_cjk(filename_str) {
             let (latin1, _, _) = WINDOWS_1252.encode(filename.to_str().unwrap());
             let (gbk, _, _) = GBK.decode(latin1.as_ref());
             return Ok(path.with_file_name(gbk.to_string()));
@@ -48,6 +49,14 @@ fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
     }
 
     Err(io::Error::new(io::ErrorKind::Other, "UTF-8 all ready"))
+}
+
+fn guess_is_cjk(str: &str) -> bool {
+    let count = str.chars().filter(|c| is_cjkish_codepoint(*c)).count();
+    if count > str.len() / 4 * 3 {
+        return true;
+    }
+    false
 }
 
 fn is_hidden(entry: &DirEntry) -> bool {
@@ -67,7 +76,7 @@ pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
 
     walkdir
         .into_iter()
-        .filter_entry(is_hidden)
+        .filter_entry(|e| !is_hidden(e))
         .for_each(|file| {
             if let Ok(pathbuf) = file.map(|f| f.into_path()) {
                 try_to_nfc_and_utf8(pathbuf.as_path())
