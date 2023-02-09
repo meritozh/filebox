@@ -13,19 +13,7 @@ use std::{
 use unicode_normalization::{is_nfd, is_nfkd, UnicodeNormalization};
 use walkdir::*;
 
-fn get_canonicalize_path(path: &Path) -> PathBuf {
-    if path.starts_with("~") {
-        let home: PathBuf = std::env::var("HOME").unwrap().into();
-        let removed = path.strip_prefix("~").unwrap();
-        return home.join(removed);
-    }
-
-    if !path.is_absolute() {
-        return path.canonicalize().unwrap();
-    }
-
-    path.to_path_buf()
-}
+use crate::utils::get_canonicalize_path;
 
 fn convert_to_nfc(path: &Path) -> PathBuf {
     if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
@@ -44,6 +32,10 @@ fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
         if !guess_is_cjk(filename_str) {
             let (latin1, _, _) = WINDOWS_1252.encode(filename.to_str().unwrap());
             let (gbk, _, _) = GBK.decode(latin1.as_ref());
+            // filter decode twice if guess wrong result.
+            if gbk.contains("&#") {
+                return Err(io::Error::new(io::ErrorKind::Other, "UTF-8 all ready"));
+            }
             return Ok(path.with_file_name(gbk.to_string()));
         }
     }
@@ -52,8 +44,14 @@ fn latin1_to_utf8(path: &Path) -> io::Result<PathBuf> {
 }
 
 fn guess_is_cjk(str: &str) -> bool {
-    let count = str.chars().filter(|c| is_cjkish_codepoint(*c)).count();
-    if count > str.len() / 4 * 3 {
+    let (cjk_count, total_count) = str.chars().fold((0, 0), |(cjk_count, total_count), c| {
+        if is_cjkish_codepoint(c) {
+            return (cjk_count + 1, total_count + 1);
+        }
+        (cjk_count, total_count + 1)
+    });
+
+    if cjk_count >= total_count / 5 * 4 {
         return true;
     }
     false

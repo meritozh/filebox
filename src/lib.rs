@@ -4,3 +4,5 @@
 // https://opensource.org/licenses/MIT
 
 pub mod subcommand;
+
+pub(crate) mod utils;
