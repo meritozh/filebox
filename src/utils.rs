@@ -5,6 +5,16 @@
 
 use std::path::{Path, PathBuf};
 
+use walkdir::DirEntry;
+
+pub(crate) fn is_hidden(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.'))
+        .unwrap_or(false)
+}
+
 pub(crate) fn get_canonicalize_path(path: &Path) -> PathBuf {
     if path.starts_with("~") {
         let home: PathBuf = std::env::var("HOME").unwrap().into();

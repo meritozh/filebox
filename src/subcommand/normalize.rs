@@ -13,7 +13,7 @@ use std::{
 use unicode_normalization::{is_nfd, is_nfkd, UnicodeNormalization};
 use walkdir::*;
 
-use crate::utils::get_canonicalize_path;
+use crate::utils::{get_canonicalize_path, is_hidden};
 
 fn convert_to_nfc(path: &Path) -> PathBuf {
     if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
@@ -57,12 +57,9 @@ fn guess_is_cjk(str: &str) -> bool {
     false
 }
 
-fn is_hidden(entry: &DirEntry) -> bool {
-    entry
-        .file_name()
-        .to_str()
-        .map(|s| s.starts_with('.'))
-        .unwrap_or(false)
+fn try_to_nfc_and_utf8(path: &Path) -> io::Result<(&Path, PathBuf)> {
+    let nfc_pathbuf = convert_to_nfc(path);
+    latin1_to_utf8(nfc_pathbuf.as_path()).map(|new_pathbuf| (path, new_pathbuf))
 }
 
 pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
@@ -91,9 +88,4 @@ pub fn all_to_nfc_and_utf8<P: AsRef<Path>>(path: P) -> io::Result<()> {
     stream.flush()?;
 
     Ok(())
-}
-
-fn try_to_nfc_and_utf8(path: &Path) -> io::Result<(&Path, PathBuf)> {
-    let nfc_pathbuf = convert_to_nfc(path);
-    latin1_to_utf8(nfc_pathbuf.as_path()).map(|new_pathbuf| (path, new_pathbuf))
 }

@@ -12,4 +12,6 @@ clap = { version = "4", features = ["derive"] }
 unicode-normalization = "0.1.22"
 encoding_rs = "0.8.32"
 cjk = "0.2.4"
-walkdir = "2"
+walkdir = "2.3.2"
+pest = "2.5.5"
+pest_derive = "2.5.5"
