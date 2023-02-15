@@ -114,7 +114,7 @@ impl<'a> Workflow<'a> {
         if let Some(ref nodes) = self.nodes {
             nodes.iter().for_each(|node| match node {
                 Node::Normalize(node) => {
-                    match (node.from, node.to) {
+                    match (&node.from, &node.to) {
                         (Form::Nfc, Form::Nfd) => {
                             
                         },
