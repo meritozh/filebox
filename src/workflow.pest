@@ -5,9 +5,9 @@
 
 WHITESPACE = _{ " " | "\r" | "\t" | "\n" }
 
-flow = _{ SOI ~ node+ ~ EOI }
+flow = _{ node+ }
 
-node = {
+node = _{
     | "NORMALIZE" ~ normalize
     | "RECOED" ~ recode
     | "RENAME" ~ rename
@@ -45,11 +45,12 @@ command = {
     "remove"
 }
 
-pattern = {
-    | "regex(" ~ inner+ ~ ")"
-    | "str(" ~ inner+ ~ ")"
+pattern = _{
+    | "regex(" ~ regex ~ ")"
+    | "str(" ~ str ~ ")"
 }
 
-inner = {
-    !")" ~ ANY
-}
+regex = { inner+ }
+str = { inner+ }
+
+inner = _{ !")" ~ ANY }

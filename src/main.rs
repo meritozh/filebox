@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT
 
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::{normalize, run, rewrite};
+use filebox::subcommand::{normalize, rewrite, run};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
@@ -31,7 +31,7 @@ enum Command {
     Workflow {
         #[arg(short, long)]
         path: String,
-    }
+    },
 }
 
 fn main() {
@@ -43,7 +43,8 @@ fn main() {
         }
         Command::Run { path } => run::run(path),
         Command::Workflow { path } => {
-            _ = rewrite::Workflow::new(path).parse_nodes();
+            let mut workflow = rewrite::Workflow::new(path);
+            workflow.parse_nodes();
         }
     }
 }
