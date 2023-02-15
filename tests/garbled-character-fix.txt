@@ -1,0 +1,2 @@
+NORMALIZE NFD -> NFC
+RECOED filename Latin 1 -> GBK

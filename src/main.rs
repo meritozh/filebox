@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT
 
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::{normalize, run};
+use filebox::subcommand::{normalize, run, rewrite};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
@@ -26,6 +26,12 @@ enum Command {
         #[arg(short, long)]
         path: String,
     },
+
+    #[command(about = "Parse workflow, run every node defined tasks")]
+    Workflow {
+        #[arg(short, long)]
+        path: String,
+    }
 }
 
 fn main() {
@@ -36,5 +42,8 @@ fn main() {
             normalize::all_to_nfc_and_utf8(path).unwrap();
         }
         Command::Run { path } => run::run(path),
+        Command::Workflow { path } => {
+            _ = rewrite::Workflow::new(path).parse_nodes();
+        }
     }
 }

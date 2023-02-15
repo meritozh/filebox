@@ -16,38 +16,32 @@ struct Rewrite {
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
-struct Workflow<'a> {
-    nodes: Vec<Node<'a>>
+pub struct Workflow<'a> {
+    source_file: String,
+    nodes: Option<Vec<Node<'a>>>
 }
 
 impl<'a> Workflow<'a> {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        todo!()
-        // let pathbuf = get_canonicalize_path(path.as_ref());
-        // let file = File::open(pathbuf).expect("file not exist or denied open");
+        let pathbuf = get_canonicalize_path(path.as_ref());
+        
+        let mut file = File::open(pathbuf).expect("file not exist or denied open");
+        let mut buf = String::new();
+        
+        file.read_to_string(&mut buf);
 
-        // Self { nodes: vec![] }
+        Self {
+            source_file: buf,
+            nodes: None
+        }
     }
 
-    fn parse_from(file: File) {
-        let pairs = Workflow::parse(Rule::flow, "test here");
+    pub fn parse_nodes(&self) {
+        let pairs = Workflow::parse(Rule::flow, self.source_file.as_str());
         match pairs {
             Ok(paris) => {
                 paris.for_each(|p| {
-                    match p.as_rule() {
-                        Rule::node => todo!(),
-                        Rule::normalize => todo!(),
-                        Rule::form => todo!(),
-                        Rule::recode => todo!(),
-                        Rule::target => todo!(),
-                        Rule::encoding => todo!(),
-                        Rule::rename => todo!(),
-                        Rule::command => todo!(),
-                        Rule::pattern => todo!(),
-                        Rule::inner => todo!(),
-                        Rule::flow => todo!(),
-                        _ => unreachable!()
-                    }
+                    println!("{:?}", p.as_str());
                 });
             }
             Err(err) => {

@@ -3,7 +3,9 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-WHITESPACE = _{ " " | "\t" | NEWLINE }
+WHITESPACE = _{ " " | "\r" | "\t" | "\n" }
+
+flow = _{ SOI ~ node+ ~ EOI }
 
 node = {
     | "NORMALIZE" ~ normalize
@@ -51,5 +53,3 @@ pattern = {
 inner = {
     !")" ~ ANY
 }
-
-flow = { (node ~ NEWLINE)+ }
