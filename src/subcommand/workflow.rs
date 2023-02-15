@@ -26,7 +26,8 @@ impl<'a> Workflow<'a> {
         let mut file = File::open(pathbuf).expect("file not exist or denied open");
         let mut buf = String::new();
 
-        file.read_to_string(&mut buf);
+        file.read_to_string(&mut buf)
+            .expect("must provide UTF-8 encoding workflow file");
 
         Self {
             source_content: buf,
@@ -112,9 +113,32 @@ impl<'a> Workflow<'a> {
     pub fn run(&self) {
         if let Some(ref nodes) = self.nodes {
             nodes.iter().for_each(|node| match node {
-                Node::Normalize(_) => todo!(),
-                Node::Recode(_) => todo!(),
-                Node::Rename(_) => todo!(),
+                Node::Normalize(node) => {
+                    match (node.from, node.to) {
+                        (Form::Nfc, Form::Nfd) => {
+                            
+                        },
+                        (Form::Nfd, Form::Nfc) => {
+
+                        },
+                        _ => unreachable!()
+                    }
+                },
+                Node::Recode(node) => {
+                    match node.target {
+                        Target::Filename => todo!(),
+                        Target::Content => todo!(),
+                    }
+                },
+                Node::Rename(node) => {
+                    match node.command {
+                        Command::Remove => {
+                            node.pattern.iter().for_each(|pat| {
+                                todo!()
+                            });
+                        },
+                    }
+                },
             });
         }
     }

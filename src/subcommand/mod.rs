@@ -5,5 +5,5 @@
 
 pub mod lean;
 pub mod normalize;
-pub mod workflow;
 pub mod run;
+pub mod workflow;

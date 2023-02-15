@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT
 
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::{normalize, workflow, run};
+use filebox::subcommand::{normalize, run, workflow};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
