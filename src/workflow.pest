@@ -52,4 +52,4 @@ inner = {
     !")" ~ ANY
 }
 
-flow = { node+ }
+flow = { (node ~ NEWLINE)+ }
