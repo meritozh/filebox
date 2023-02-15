@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT
 
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::{normalize, rewrite, run};
+use filebox::subcommand::{normalize, workflow, run};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
@@ -43,7 +43,7 @@ fn main() {
         }
         Command::Run { path } => run::run(path),
         Command::Workflow { path } => {
-            let mut workflow = rewrite::Workflow::new(path);
+            let mut workflow = workflow::Workflow::new(path);
             workflow.parse_nodes();
         }
     }
