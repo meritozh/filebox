@@ -7,10 +7,9 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::utils::get_canonicalize_path;
 
+use encoding_rs::Encoding;
 use pest::Parser;
 use pest_derive::Parser;
-
-struct Rewrite {}
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
@@ -42,6 +41,9 @@ impl<'a> Workflow<'a> {
                 self.nodes = Some(
                     paris
                         .map(|pair| match pair.as_rule() {
+                            Rule::path => Node::Path(PathNode {
+                                path: pair.as_str(),
+                            }),
                             Rule::normalize => {
                                 let mut iter = pair.into_inner().map(|pair| {
                                     assert!(matches!(pair.as_rule(), Rule::form));
@@ -112,42 +114,50 @@ impl<'a> Workflow<'a> {
 
     pub fn run(&self) {
         if let Some(ref nodes) = self.nodes {
-            nodes.iter().for_each(|node| match node {
-                Node::Normalize(node) => {
-                    match (&node.from, &node.to) {
-                        (Form::Nfc, Form::Nfd) => {
-                            
-                        },
-                        (Form::Nfd, Form::Nfc) => {
+            let path = nodes
+                .iter()
+                .find(|n| matches!(n, Node::Path(_)))
+                .expect("must provide PATH node");
 
-                        },
-                        _ => unreachable!()
+            nodes.iter().for_each(|node| match node {
+                Node::Path(node) => {
+                    // Ignore Path node
+                }
+                Node::Normalize(node) => match (&node.from, &node.to) {
+                    (Form::Nfc, Form::Nfd) => {}
+                    (Form::Nfd, Form::Nfc) => {}
+                    _ => unreachable!(),
+                },
+                Node::Recode(node) => match node.target {
+                    Target::Filename => {
+                        let (from, to) = node.encoding;
+                        if let (Some(from), Some(to)) = (
+                            Encoding::for_label(from.as_bytes()),
+                            Encoding::for_label(to.as_bytes()),
+                        ) {}
+                    }
+                    Target::Content => todo!(),
+                },
+                Node::Rename(node) => match node.command {
+                    Command::Remove => {
+                        node.pattern.iter().for_each(|pat| todo!());
                     }
                 },
-                Node::Recode(node) => {
-                    match node.target {
-                        Target::Filename => todo!(),
-                        Target::Content => todo!(),
-                    }
-                },
-                Node::Rename(node) => {
-                    match node.command {
-                        Command::Remove => {
-                            node.pattern.iter().for_each(|pat| {
-                                todo!()
-                            });
-                        },
-                    }
-                },
+                _ => unreachable!(),
             });
         }
     }
 }
 
 enum Node<'a> {
+    Path(PathNode<'a>),
     Normalize(NormalizeNode),
     Recode(RecodeNode<'a>),
     Rename(RenameNode<'a>),
+}
+
+struct PathNode<'a> {
+    path: &'a str,
 }
 
 struct NormalizeNode {

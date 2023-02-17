@@ -8,10 +8,13 @@ WHITESPACE = _{ " " | "\r" | "\t" | "\n" }
 flow = _{ node+ }
 
 node = _{
+    | "PATH" ~ path
     | "NORMALIZE" ~ normalize
     | "RECOED" ~ recode
     | "RENAME" ~ rename
 }
+
+path = { !NEWLINE ~ ANY }
 
 normalize = {
     form ~ "->" ~ form
