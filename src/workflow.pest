@@ -12,6 +12,7 @@ node = _{
     | "NORMALIZE" ~ normalize
     | "RECOED" ~ recode
     | "RENAME" ~ rename
+    | "TARGET" ~ target
 }
 
 path = { !NEWLINE ~ ANY }
@@ -26,7 +27,8 @@ form = {
 }
 
 recode = {
-    target ~ encoding ~ "->" ~ encoding
+    | "AUTO"
+    | encoding ~ "->" ~ encoding
 }
 
 target = {

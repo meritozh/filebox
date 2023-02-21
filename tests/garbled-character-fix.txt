@@ -1,5 +1,6 @@
 PATH ~/Downlods/
+TARGET filename
 
 NORMALIZE NFD -> NFC
-RECOED filename Latin 1 -> GBK
+RECOED Latin 1 -> GBK
 RENAME remove str(test1) str(test2)

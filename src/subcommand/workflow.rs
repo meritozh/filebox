@@ -6,16 +6,20 @@
 use std::{fs::File, io::Read, path::Path};
 
 use crate::utils::get_canonicalize_path;
+use crate::subcommand::executor::Executor;
 
 use encoding_rs::Encoding;
 use pest::Parser;
 use pest_derive::Parser;
+
+type Task = impl Fn(&[u8]) -> String;
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
 pub struct Workflow<'a> {
     source_content: String,
     nodes: Option<Vec<Node<'a>>>,
+    executor: Executor<Task>,
 }
 
 impl<'a> Workflow<'a> {
@@ -31,6 +35,7 @@ impl<'a> Workflow<'a> {
         Self {
             source_content: buf,
             nodes: None,
+            executor: Executor::new()
         }
     }
 
@@ -41,8 +46,11 @@ impl<'a> Workflow<'a> {
                 self.nodes = Some(
                     paris
                         .map(|pair| match pair.as_rule() {
-                            Rule::path => Node::Path(PathNode {
-                                path: pair.as_str(),
+                            Rule::path => Node::Path(pair.as_str()),
+                            Rule::target => Node::Target(match pair.as_str() {
+                                "filename" => Target::Filename,
+                                "content" => Target::Content,
+                                _ => unreachable!(),
                             }),
                             Rule::normalize => {
                                 let mut iter = pair.into_inner().map(|pair| {
@@ -60,22 +68,14 @@ impl<'a> Workflow<'a> {
                             }
                             Rule::recode => {
                                 let mut iter = pair.into_inner().map(|pair| {
-                                    assert!(matches!(
-                                        pair.as_rule(),
-                                        Rule::target | Rule::encoding
-                                    ));
+                                    assert!(matches!(pair.as_rule(), Rule::encoding));
                                     pair.as_str()
                                 });
-                                Node::Recode(RecodeNode {
-                                    target: iter
-                                        .next()
-                                        .map(|target| match target {
-                                            "filename" => Target::Filename,
-                                            "content" => Target::Content,
-                                            _ => unreachable!(),
-                                        })
-                                        .unwrap(),
-                                    encoding: (iter.next().unwrap(), iter.next().unwrap()),
+                                Node::Recode(match iter.next().unwrap() {
+                                    "AUTO" => RecodeNode { encoding: None },
+                                    from @ _ => RecodeNode {
+                                        encoding: Some((from, iter.next().unwrap())),
+                                    },
                                 })
                             }
                             Rule::rename => {
@@ -120,23 +120,24 @@ impl<'a> Workflow<'a> {
                 .expect("must provide PATH node");
 
             nodes.iter().for_each(|node| match node {
-                Node::Path(node) => {
+                Node::Path(_) => {
                     // Ignore Path node
                 }
                 Node::Normalize(node) => match (&node.from, &node.to) {
-                    (Form::Nfc, Form::Nfd) => {}
+                    (Form::Nfc, Form::Nfd) => {
+                        self.executor.add_task(|input| input);
+                    }
                     (Form::Nfd, Form::Nfc) => {}
                     _ => unreachable!(),
                 },
-                Node::Recode(node) => match node.target {
-                    Target::Filename => {
-                        let (from, to) = node.encoding;
-                        if let (Some(from), Some(to)) = (
-                            Encoding::for_label(from.as_bytes()),
-                            Encoding::for_label(to.as_bytes()),
-                        ) {}
+                Node::Recode(node) => match node.encoding {
+                    Some((from, to)) => {
+                        let from = Encoding::for_label(from.as_bytes())
+                            .expect("from encoding isn't correct");
+                        let to =
+                            Encoding::for_label(to.as_bytes()).expect("to encoding isn't correct");
                     }
-                    Target::Content => todo!(),
+                    None => todo!(),
                 },
                 Node::Rename(node) => match node.command {
                     Command::Remove => {
@@ -150,14 +151,11 @@ impl<'a> Workflow<'a> {
 }
 
 enum Node<'a> {
-    Path(PathNode<'a>),
+    Path(&'a str),
+    Target(Target),
     Normalize(NormalizeNode),
     Recode(RecodeNode<'a>),
     Rename(RenameNode<'a>),
-}
-
-struct PathNode<'a> {
-    path: &'a str,
 }
 
 struct NormalizeNode {
@@ -171,8 +169,7 @@ enum Form {
 }
 
 struct RecodeNode<'a> {
-    target: Target,
-    encoding: (&'a str, &'a str),
+    encoding: Option<(&'a str, &'a str)>,
 }
 
 enum Target {
