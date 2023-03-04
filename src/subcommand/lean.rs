@@ -15,5 +15,5 @@ fn lean<P: AsRef<Path>>(path: P) {
 
     walkdir
         .into_iter()
-        .for_each(|file| if let Ok(pathbuf) = file.map(|f| f.into_path()) {})
+        .for_each(|file| if let Ok(_pathbuf) = file.map(|f| f.into_path()) {})
 }

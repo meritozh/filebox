@@ -13,6 +13,7 @@ node = _{
     | "RECOED" ~ recode
     | "RENAME" ~ rename
     | "TARGET" ~ target
+    | unbake
 }
 
 path = { !NEWLINE ~ ANY }
@@ -27,9 +28,10 @@ form = {
 }
 
 recode = {
-    | "AUTO"
-    | encoding ~ "->" ~ encoding
+    encoding ~ "->" ~ encoding
 }
+
+unbake = { "UNBAKE" }
 
 target = {
     | "filename"

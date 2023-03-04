@@ -3,8 +3,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#![feature(fn_traits)]
-#![feature(unboxed_closures)]
+#![feature(string_remove_matches)]
 
 pub mod subcommand;
 

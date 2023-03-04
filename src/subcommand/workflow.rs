@@ -3,26 +3,26 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
+use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 use std::{fs::File, io::Read, path::Path};
 
-use crate::subcommand::executor::Executor;
 use crate::utils::{get_canonicalize_path, is_hidden};
 
-use encoding_rs::Encoding;
+use chardetng::EncodingDetector;
+use encoding_rs::{Encoding, WINDOWS_1252};
 use pest::Parser;
 use pest_derive::Parser;
-use walkdir::WalkDir;
 
-type Task = impl Fn(&[u8]) -> String;
+use unicode_normalization::{is_nfc, is_nfd, is_nfkc, is_nfkd, UnicodeNormalization};
+use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
 pub struct Workflow<'a> {
     source_content: String,
     nodes: Option<Vec<Node<'a>>>,
-    executor: Executor<Task>,
 }
 
 impl<'a> Workflow<'a> {
@@ -38,7 +38,6 @@ impl<'a> Workflow<'a> {
         Self {
             source_content: buf,
             nodes: None,
-            executor: Executor::new(),
         }
     }
 
@@ -74,13 +73,11 @@ impl<'a> Workflow<'a> {
                                     assert!(matches!(pair.as_rule(), Rule::encoding));
                                     pair.as_str()
                                 });
-                                Node::Recode(match iter.next().unwrap() {
-                                    "AUTO" => RecodeNode { encoding: None },
-                                    from @ _ => RecodeNode {
-                                        encoding: Some((from, iter.next().unwrap())),
-                                    },
+                                Node::Recode(RecodeNode {
+                                    encoding: (iter.next().unwrap(), iter.next().unwrap()),
                                 })
                             }
+                            Rule::unbake => Node::Unbake,
                             Rule::rename => {
                                 let mut iter = pair.into_inner();
 
@@ -94,7 +91,7 @@ impl<'a> Workflow<'a> {
 
                                 Node::Rename(RenameNode {
                                     command,
-                                    pattern: iter
+                                    patterns: iter
                                         .map(|pair| match pair.as_rule() {
                                             Rule::regex => Pattern::Regex(pair.as_str()),
                                             Rule::str => Pattern::Str(pair.as_str()),
@@ -115,20 +112,30 @@ impl<'a> Workflow<'a> {
         }
     }
 
-    pub fn run(&self) {
+    pub fn run(&self) -> io::Result<()> {
         if let Some(ref nodes) = self.nodes {
-            let Node::Path(path) = nodes
+            let path = if let Node::Path(path) = nodes
                 .iter()
                 .find(|n| matches!(n, Node::Path(_)))
-                .expect("must provide PATH node");
+                .expect("must provide PATH node")
+            {
+                path
+            } else {
+                unreachable!()
+            };
 
-            let Node::Target(target) = nodes
+            let target = if let Node::Target(target) = nodes
                 .iter()
                 .find(|n| matches!(n, Node::Target(_)))
-                .expect("must provide TARGET node");
+                .expect("must provide TARGET node")
+            {
+                target
+            } else {
+                unreachable!()
+            };
 
             if matches!(target, Target::Content) {
-                panic!("current not implement Content TARGET");
+                unimplemented!()
             }
 
             let pathbuf = get_canonicalize_path(path.as_ref());
@@ -142,81 +149,114 @@ impl<'a> Workflow<'a> {
                 .filter_entry(|e| !is_hidden(e))
                 .for_each(|file| {
                     if let Ok(pathbuf) = file.map(|f| f.into_path()) {
-                        let x = nodes
+                        let _x = nodes
                             .iter()
                             .fold::<Option<PathBuf>, _>(None, |input, node| {
-                                let path = if input.is_none() {
-                                    pathbuf
+                                let pathbuf = if input.is_none() {
+                                    pathbuf.clone()
                                 } else {
                                     input.unwrap()
-                                }
-                                .as_path();
+                                };
 
-                                let x = match node {
-                                    Node::Path(_) | Node::Target(_) => input.into(),
+                                let modified_pathbuf = match node {
+                                    Node::Path(_) | Node::Target(_) => None,
                                     Node::Normalize(node) => match (&node.from, &node.to) {
-                                        (Form::Nfc, Form::Nfd) => convert_to_nfd(path),
-                                        (Form::Nfd, Form::Nfc) => convert_to_nfc(path),
+                                        (Form::Nfc, Form::Nfd) => convert_to_nfd(&pathbuf),
+                                        (Form::Nfd, Form::Nfc) => convert_to_nfc(&pathbuf),
                                         _ => unreachable!(),
                                     },
-                                    Node::Recode(node) => match node.encoding {
-                                        Some((from, to)) => {
-                                            let from = Encoding::for_label(from.as_bytes())
-                                                .expect("from encoding isn't correct");
-                                            let to = Encoding::for_label(to.as_bytes())
-                                                .expect("to encoding isn't correct");
+                                    Node::Recode(node) => {
+                                        let (from, to) = node.encoding;
+                                        let from = Encoding::for_label(from.as_bytes())
+                                            .expect("from encoding isn't correct");
+                                        let to = Encoding::for_label(to.as_bytes())
+                                            .expect("to encoding isn't correct");
 
-                                            change_encoding(from, to, path)
-                                        }
-                                        None => {}
-                                    },
+                                        change_encoding(from, to, &pathbuf)
+                                    }
+                                    Node::Unbake => unbaking_mojibake(&pathbuf),
                                     Node::Rename(node) => match node.command {
                                         Command::Remove => {
-                                            node.pattern.iter().for_each(|pat| todo!());
+                                            remove_str_by_patterns(&node.patterns, &pathbuf)
                                         }
                                     },
                                     _ => unreachable!(),
                                 };
 
-                                None
+                                modified_pathbuf.or(Some(pathbuf))
                             });
                     }
                 });
 
             stream.flush()?;
         }
+        Ok(())
     }
 }
 
-fn convert_to_nfc(path: &Path) -> PathBuf {
-    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+fn convert_to_nfc(pathbuf: &PathBuf) -> Option<PathBuf> {
+    if let Some(filename) = pathbuf.file_name().and_then(|n| n.to_str()) {
         if is_nfd(filename) || is_nfkd(filename) {
             let normalized_filename = filename.nfc().collect::<String>();
-            return path.with_file_name(normalized_filename);
+            return Some(pathbuf.with_file_name(normalized_filename));
         }
     }
 
-    path.to_path_buf()
+    None
 }
 
-fn convert_to_nfd(path: &Path) -> PathBuf {
-    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+fn convert_to_nfd(pathbuf: &PathBuf) -> Option<PathBuf> {
+    if let Some(filename) = pathbuf.file_name().and_then(|n| n.to_str()) {
         if is_nfc(filename) || is_nfkc(filename) {
             let normalized_filename = filename.nfc().collect::<String>();
-            return path.with_file_name(normalized_filename);
+            return Some(pathbuf.with_file_name(normalized_filename));
         }
     }
 
-    path.to_path_buf()
+    None
 }
 
-fn change_encoding(from: &Encoding, to: &Encoding, path: &Path) -> PathBuf {
-    if let Some(filename) = path.file_name() {
+fn change_encoding(
+    from: &'static Encoding,
+    to: &'static Encoding,
+    pathbuf: &PathBuf,
+) -> Option<PathBuf> {
+    if let Some(filename) = pathbuf.file_name() {
         let (from_encoded, _, _) = from.encode(filename.to_str().unwrap());
         let (to_decoded, _, _) = to.decode(from_encoded.as_ref());
-        return path.with_file_name(to_decoded);
+        return Some(pathbuf.with_file_name(to_decoded.to_string()));
     }
-    path.into()
+
+    None
+}
+
+fn unbaking_mojibake(pathbuf: &PathBuf) -> Option<PathBuf> {
+    if let Some(filename) = pathbuf.file_name() {
+        let mut detector = EncodingDetector::new();
+        detector.feed(filename.as_bytes(), true);
+        let (encoding, is_ranked) = detector.guess_assess(None, false);
+        if is_ranked {
+            return change_encoding(WINDOWS_1252, encoding, pathbuf);
+        }
+    }
+
+    None
+}
+
+fn remove_str_by_patterns(patterns: &Vec<Pattern>, pathbuf: &PathBuf) -> Option<PathBuf> {
+    if let Some(filename) = pathbuf.file_name() {
+        let mut mutable_filename: String = filename.to_str().unwrap().into();
+        patterns.iter().for_each(|pat| match pat {
+            Pattern::Regex(_regex) => {
+                unimplemented!()
+            }
+            Pattern::Str(str) => mutable_filename.remove_matches(str),
+        });
+
+        return Some(pathbuf.with_file_name(mutable_filename));
+    }
+
+    None
 }
 
 enum Node<'a> {
@@ -224,6 +264,7 @@ enum Node<'a> {
     Target(Target),
     Normalize(NormalizeNode),
     Recode(RecodeNode<'a>),
+    Unbake,
     Rename(RenameNode<'a>),
 }
 
@@ -238,7 +279,7 @@ enum Form {
 }
 
 struct RecodeNode<'a> {
-    encoding: Option<(&'a str, &'a str)>,
+    encoding: (&'a str, &'a str),
 }
 
 enum Target {
@@ -248,7 +289,7 @@ enum Target {
 
 struct RenameNode<'a> {
     command: Command,
-    pattern: Vec<Pattern<'a>>,
+    patterns: Vec<Pattern<'a>>,
 }
 
 enum Pattern<'a> {
