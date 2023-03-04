@@ -152,10 +152,10 @@ impl<'a> Workflow<'a> {
                         let _x = nodes
                             .iter()
                             .fold::<Option<PathBuf>, _>(None, |input, node| {
-                                let pathbuf = if input.is_none() {
-                                    pathbuf.clone()
+                                let pathbuf = if let Some(inner) = input {
+                                    inner
                                 } else {
-                                    input.unwrap()
+                                    pathbuf.clone()
                                 };
 
                                 let modified_pathbuf = match node {
@@ -180,7 +180,6 @@ impl<'a> Workflow<'a> {
                                             remove_str_by_patterns(&node.patterns, &pathbuf)
                                         }
                                     },
-                                    _ => None,
                                 };
 
                                 modified_pathbuf.or(Some(pathbuf))
@@ -194,57 +193,53 @@ impl<'a> Workflow<'a> {
     }
 }
 
-fn convert_to_nfc(pathbuf: &PathBuf) -> Option<PathBuf> {
-    if let Some(filename) = pathbuf.file_name().and_then(|n| n.to_str()) {
+fn convert_to_nfc(path: &Path) -> Option<PathBuf> {
+    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
         if is_nfd(filename) || is_nfkd(filename) {
             let normalized_filename = filename.nfc().collect::<String>();
-            return Some(pathbuf.with_file_name(normalized_filename));
+            return Some(path.with_file_name(normalized_filename));
         }
     }
 
     None
 }
 
-fn convert_to_nfd(pathbuf: &PathBuf) -> Option<PathBuf> {
-    if let Some(filename) = pathbuf.file_name().and_then(|n| n.to_str()) {
+fn convert_to_nfd(path: &Path) -> Option<PathBuf> {
+    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
         if is_nfc(filename) || is_nfkc(filename) {
             let normalized_filename = filename.nfc().collect::<String>();
-            return Some(pathbuf.with_file_name(normalized_filename));
+            return Some(path.with_file_name(normalized_filename));
         }
     }
 
     None
 }
 
-fn change_encoding(
-    from: &'static Encoding,
-    to: &'static Encoding,
-    pathbuf: &PathBuf,
-) -> Option<PathBuf> {
-    if let Some(filename) = pathbuf.file_name() {
+fn change_encoding(from: &'static Encoding, to: &'static Encoding, path: &Path) -> Option<PathBuf> {
+    if let Some(filename) = path.file_name() {
         let (from_encoded, _, _) = from.encode(filename.to_str().unwrap());
         let (to_decoded, _, _) = to.decode(from_encoded.as_ref());
-        return Some(pathbuf.with_file_name(to_decoded.to_string()));
+        return Some(path.with_file_name(to_decoded.to_string()));
     }
 
     None
 }
 
-fn unbaking_mojibake(pathbuf: &PathBuf) -> Option<PathBuf> {
-    if let Some(filename) = pathbuf.file_name() {
+fn unbaking_mojibake(path: &Path) -> Option<PathBuf> {
+    if let Some(filename) = path.file_name() {
         let mut detector = EncodingDetector::new();
         detector.feed(filename.as_bytes(), true);
         let (encoding, is_ranked) = detector.guess_assess(None, false);
         if is_ranked {
-            return change_encoding(WINDOWS_1252, encoding, pathbuf);
+            return change_encoding(WINDOWS_1252, encoding, path);
         }
     }
 
     None
 }
 
-fn remove_str_by_patterns(patterns: &Vec<Pattern>, pathbuf: &PathBuf) -> Option<PathBuf> {
-    if let Some(filename) = pathbuf.file_name() {
+fn remove_str_by_patterns(patterns: &[Pattern], path: &Path) -> Option<PathBuf> {
+    if let Some(filename) = path.file_name() {
         let mut mutable_filename: String = filename.to_str().unwrap().into();
         patterns.iter().for_each(|pat| match pat {
             Pattern::Regex(_regex) => {
@@ -253,7 +248,7 @@ fn remove_str_by_patterns(patterns: &Vec<Pattern>, pathbuf: &PathBuf) -> Option<
             Pattern::Str(str) => mutable_filename.remove_matches(str),
         });
 
-        return Some(pathbuf.with_file_name(mutable_filename));
+        return Some(path.with_file_name(mutable_filename));
     }
 
     None
