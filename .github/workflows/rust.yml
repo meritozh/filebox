@@ -17,6 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy
     - name: Build
       run: cargo build --verbose
     - name: Clippy
