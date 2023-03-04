@@ -163,7 +163,7 @@ impl<'a> Workflow<'a> {
                                     Node::Normalize(node) => match (&node.from, &node.to) {
                                         (Form::Nfc, Form::Nfd) => convert_to_nfd(&pathbuf),
                                         (Form::Nfd, Form::Nfc) => convert_to_nfc(&pathbuf),
-                                        _ => unreachable!(),
+                                        _ => None,
                                     },
                                     Node::Recode(node) => {
                                         let (from, to) = node.encoding;
@@ -180,7 +180,7 @@ impl<'a> Workflow<'a> {
                                             remove_str_by_patterns(&node.patterns, &pathbuf)
                                         }
                                     },
-                                    _ => unreachable!(),
+                                    _ => None,
                                 };
 
                                 modified_pathbuf.or(Some(pathbuf))
