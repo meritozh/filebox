@@ -4,14 +4,12 @@
 // https://opensource.org/licenses/MIT
 
 use std::io::{self, BufWriter, Write};
-use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 use std::{fs::File, io::Read, path::Path};
 
 use crate::utils::{get_canonicalize_path, is_hidden};
 
-use chardetng::EncodingDetector;
-use encoding_rs::{Encoding, WINDOWS_1252};
+use encoding_rs::Encoding;
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -23,6 +21,8 @@ use walkdir::WalkDir;
 pub struct Workflow {
     source_content: String,
 }
+
+const GARBLED_CHARS: &[&str] = &[""];
 
 impl Workflow {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
@@ -39,65 +39,67 @@ impl Workflow {
         }
     }
 
-    pub fn get_tokens<'a>(&'a self) -> Option<Vec<Token<'a>>> {
+    pub fn get_tokens(&self) -> Option<Vec<Token<'_>>> {
         let pairs = Workflow::parse(Rule::flow, self.source_content.as_str());
         match pairs {
             Ok(paris) => {
                 let tokens = paris
-                    .map(|pair| match pair.as_rule() {
-                        Rule::path => Token::Path(pair.as_str()),
-                        Rule::target => Token::Target(match pair.as_str() {
-                            "filename" => Target::Filename,
-                            "content" => Target::Content,
-                            _ => unreachable!(),
-                        }),
-                        Rule::normalize => {
-                            let mut iter = pair.into_inner().map(|pair| {
-                                assert!(matches!(pair.as_rule(), Rule::form));
-                                match pair.as_str() {
-                                    "NFD" => Form::Nfd,
-                                    "NFC" => Form::Nfc,
-                                    _ => unreachable!(),
-                                }
-                            });
-                            Token::Normalize(Normalize {
-                                from: iter.next().unwrap(),
-                                to: iter.next().unwrap(),
-                            })
-                        }
-                        Rule::recode => {
-                            let mut iter = pair.into_inner().map(|pair| {
-                                assert!(matches!(pair.as_rule(), Rule::encoding));
-                                pair.as_str()
-                            });
-                            Token::Recode(Recode {
-                                encoding: (iter.next().unwrap(), iter.next().unwrap()),
-                            })
-                        }
-                        Rule::unbake => Token::Unbake,
-                        Rule::rename => {
-                            let mut iter = pair.into_inner();
-
-                            let command = iter
-                                .next()
-                                .map(|command| match command.as_str() {
-                                    "remove" => Command::Remove,
-                                    _ => unreachable!(),
+                    .map(|pair| {
+                        let rule = pair.as_rule();
+                        match rule {
+                            Rule::path => Token::Path(pair.as_str()),
+                            Rule::target => Token::Target(match pair.as_str() {
+                                "filename" => Target::Filename,
+                                "content" => Target::Content,
+                                _ => unreachable!(),
+                            }),
+                            Rule::normalize => {
+                                let mut iter = pair.into_inner().map(|pair| {
+                                    assert!(matches!(pair.as_rule(), Rule::form));
+                                    match pair.as_str() {
+                                        "NFD" => Form::Nfd,
+                                        "NFC" => Form::Nfc,
+                                        _ => unreachable!(),
+                                    }
+                                });
+                                Token::Normalize(Normalize {
+                                    from: iter.next().unwrap(),
+                                    to: iter.next().unwrap(),
                                 })
-                                .unwrap();
+                            }
+                            Rule::unbake => {
+                                let mut iter = pair.into_inner().map(|pair| {
+                                    assert!(matches!(pair.as_rule(), Rule::encoding));
+                                    pair.as_str()
+                                });
+                                Token::Unbake(Unbake {
+                                    encoding: (iter.next().unwrap(), iter.next().unwrap()),
+                                })
+                            }
+                            Rule::rename => {
+                                let mut iter = pair.into_inner();
 
-                            Token::Rename(Rename {
-                                command,
-                                patterns: iter
-                                    .map(|pair| match pair.as_rule() {
-                                        Rule::regex => Pattern::Regex(pair.as_str()),
-                                        Rule::str => Pattern::Str(pair.as_str()),
+                                let command = iter
+                                    .next()
+                                    .map(|command| match command.as_str() {
+                                        "remove" => Command::Remove,
                                         _ => unreachable!(),
                                     })
-                                    .collect(),
-                            })
+                                    .unwrap();
+
+                                Token::Rename(Rename {
+                                    command,
+                                    patterns: iter
+                                        .map(|pair| match pair.as_rule() {
+                                            Rule::regex => Pattern::Regex(pair.as_str()),
+                                            Rule::str => Pattern::Str(pair.as_str()),
+                                            _ => unreachable!(),
+                                        })
+                                        .collect(),
+                                })
+                            }
+                            _ => unreachable!(),
                         }
-                        _ => unreachable!(),
                     })
                     .collect();
 
@@ -111,7 +113,7 @@ impl Workflow {
     }
 }
 
-pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
+pub fn execute(tokens: Option<Vec<Token<'_>>>) -> io::Result<()> {
     if let Some(ref nodes) = tokens {
         let path = if let Token::Path(path) = nodes
             .iter()
@@ -125,7 +127,7 @@ pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
 
         let target = if let Token::Target(target) = nodes
             .iter()
-            .find(|n| matches!(n, Token::Target(_)))
+            .find(|t| matches!(t, &&Token::Target(_)))
             .expect("must provide TARGET node")
         {
             target
@@ -146,8 +148,12 @@ pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
         walkdir
             .into_iter()
             .filter_entry(|e| !is_hidden(e))
-            .for_each(|file| {
-                if let Ok(pathbuf) = file.map(|f| f.into_path()) {
+            .for_each(|e| {
+                if let Ok(e) = e {
+                    if e.file_type().is_dir() {
+                        return;
+                    }
+                    let pathbuf = e.into_path();
                     let final_pathbuf =
                         nodes
                             .iter()
@@ -165,7 +171,7 @@ pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
                                         (Form::Nfd, Form::Nfc) => convert_to_nfc(&pathbuf),
                                         _ => None,
                                     },
-                                    Token::Recode(node) => {
+                                    Token::Unbake(node) => {
                                         let (from, to) = node.encoding;
                                         let from = Encoding::for_label(from.as_bytes())
                                             .expect("from encoding isn't correct");
@@ -174,7 +180,6 @@ pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
 
                                         change_encoding(from, to, &pathbuf)
                                     }
-                                    Token::Unbake => unbaking_mojibake(&pathbuf),
                                     Token::Rename(node) => match node.command {
                                         Command::Remove => {
                                             remove_str_by_patterns(&node.patterns, &pathbuf)
@@ -196,7 +201,6 @@ pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
                     }
                 }
             });
-
         stream.flush()?;
     }
     Ok(())
@@ -234,19 +238,6 @@ fn change_encoding(from: &'static Encoding, to: &'static Encoding, path: &Path) 
     None
 }
 
-fn unbaking_mojibake(path: &Path) -> Option<PathBuf> {
-    if let Some(filename) = path.file_name() {
-        let mut detector = EncodingDetector::new();
-        detector.feed(filename.as_bytes(), true);
-        let (encoding, is_ranked) = detector.guess_assess(None, false);
-        if is_ranked {
-            return change_encoding(WINDOWS_1252, encoding, path);
-        }
-    }
-
-    None
-}
-
 fn remove_str_by_patterns(patterns: &[Pattern], path: &Path) -> Option<PathBuf> {
     if let Some(filename) = path.file_name() {
         let mut mutable_filename: String = filename.to_str().unwrap().into();
@@ -267,8 +258,7 @@ pub enum Token<'a> {
     Path(&'a str),
     Target(Target),
     Normalize(Normalize),
-    Recode(Recode<'a>),
-    Unbake,
+    Unbake(Unbake<'a>),
     Rename(Rename<'a>),
 }
 
@@ -282,7 +272,7 @@ enum Form {
     Nfc,
 }
 
-pub struct Recode<'a> {
+pub struct Unbake<'a> {
     encoding: (&'a str, &'a str),
 }
 

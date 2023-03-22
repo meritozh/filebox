@@ -3,20 +3,18 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-WHITESPACE = _{ " " | "\r" | "\t" | "\n" }
-
 flow = _{ node+ }
 
 node = _{
     | "PATH" ~ path
     | "NORMALIZE" ~ normalize
-    | "RECOED" ~ recode
+    | "UNBAKE" ~ unbake
     | "RENAME" ~ rename
     | "TARGET" ~ target
     | unbake
 }
 
-path = { !NEWLINE ~ ANY }
+path = @{ (!NEWLINE ~ ANY)+ }
 
 normalize = {
     form ~ "->" ~ form
@@ -27,11 +25,9 @@ form = {
     | "NFD"
 }
 
-recode = {
+unbake = {
     encoding ~ "->" ~ encoding
 }
-
-unbake = { "UNBAKE" }
 
 target = {
     | "filename"
@@ -39,9 +35,8 @@ target = {
 }
 
 encoding = {
-    | "Latin 1"
+    | "windows-1252"
     | "GBK"
-    | "Shift JIS"
 }
 
 rename = {
@@ -57,7 +52,8 @@ pattern = _{
     | "str(" ~ str ~ ")"
 }
 
-regex = { inner+ }
-str = { inner+ }
+regex = @{ inner }
+str = @{ inner }
+inner = @{ (!")" ~ ANY)+ }
 
-inner = _{ !")" ~ ANY }
+WHITESPACE = _{ " " | "\r" | "\t" | "\n" }
