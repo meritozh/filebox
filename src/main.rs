@@ -4,7 +4,10 @@
 // https://opensource.org/licenses/MIT
 
 use clap::{command, Parser, Subcommand};
-use filebox::subcommand::{normalize, run, workflow};
+use filebox::subcommand::{
+    normalize, run,
+    workflow::{self, execute},
+};
 
 #[derive(Parser, Debug)]
 #[command(author = "meritozh")]
@@ -43,8 +46,9 @@ fn main() {
         }
         Command::Run { path } => run::run(path),
         Command::Workflow { path } => {
-            let mut workflow = workflow::Workflow::new(path);
-            workflow.parse_nodes();
+            let workflow = workflow::Workflow::new(path);
+            let tokens = workflow.get_tokens();
+            execute(tokens).expect("something wrong");
         }
     }
 }

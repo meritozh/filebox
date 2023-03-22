@@ -20,12 +20,11 @@ use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
-pub struct Workflow<'a> {
+pub struct Workflow {
     source_content: String,
-    nodes: Option<Vec<Node<'a>>>,
 }
 
-impl<'a> Workflow<'a> {
+impl Workflow {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let pathbuf = get_canonicalize_path(path.as_ref());
 
@@ -37,119 +36,120 @@ impl<'a> Workflow<'a> {
 
         Self {
             source_content: buf,
-            nodes: None,
         }
     }
 
-    pub fn parse_nodes(&'a mut self) {
+    pub fn get_tokens<'a>(&'a self) -> Option<Vec<Token<'a>>> {
         let pairs = Workflow::parse(Rule::flow, self.source_content.as_str());
         match pairs {
             Ok(paris) => {
-                self.nodes = Some(
-                    paris
-                        .map(|pair| match pair.as_rule() {
-                            Rule::path => Node::Path(pair.as_str()),
-                            Rule::target => Node::Target(match pair.as_str() {
-                                "filename" => Target::Filename,
-                                "content" => Target::Content,
-                                _ => unreachable!(),
-                            }),
-                            Rule::normalize => {
-                                let mut iter = pair.into_inner().map(|pair| {
-                                    assert!(matches!(pair.as_rule(), Rule::form));
-                                    match pair.as_str() {
-                                        "NFD" => Form::Nfd,
-                                        "NFC" => Form::Nfc,
-                                        _ => unreachable!(),
-                                    }
-                                });
-                                Node::Normalize(NormalizeNode {
-                                    from: iter.next().unwrap(),
-                                    to: iter.next().unwrap(),
-                                })
-                            }
-                            Rule::recode => {
-                                let mut iter = pair.into_inner().map(|pair| {
-                                    assert!(matches!(pair.as_rule(), Rule::encoding));
-                                    pair.as_str()
-                                });
-                                Node::Recode(RecodeNode {
-                                    encoding: (iter.next().unwrap(), iter.next().unwrap()),
-                                })
-                            }
-                            Rule::unbake => Node::Unbake,
-                            Rule::rename => {
-                                let mut iter = pair.into_inner();
+                let tokens = paris
+                    .map(|pair| match pair.as_rule() {
+                        Rule::path => Token::Path(pair.as_str()),
+                        Rule::target => Token::Target(match pair.as_str() {
+                            "filename" => Target::Filename,
+                            "content" => Target::Content,
+                            _ => unreachable!(),
+                        }),
+                        Rule::normalize => {
+                            let mut iter = pair.into_inner().map(|pair| {
+                                assert!(matches!(pair.as_rule(), Rule::form));
+                                match pair.as_str() {
+                                    "NFD" => Form::Nfd,
+                                    "NFC" => Form::Nfc,
+                                    _ => unreachable!(),
+                                }
+                            });
+                            Token::Normalize(Normalize {
+                                from: iter.next().unwrap(),
+                                to: iter.next().unwrap(),
+                            })
+                        }
+                        Rule::recode => {
+                            let mut iter = pair.into_inner().map(|pair| {
+                                assert!(matches!(pair.as_rule(), Rule::encoding));
+                                pair.as_str()
+                            });
+                            Token::Recode(Recode {
+                                encoding: (iter.next().unwrap(), iter.next().unwrap()),
+                            })
+                        }
+                        Rule::unbake => Token::Unbake,
+                        Rule::rename => {
+                            let mut iter = pair.into_inner();
 
-                                let command = iter
-                                    .next()
-                                    .map(|command| match command.as_str() {
-                                        "remove" => Command::Remove,
+                            let command = iter
+                                .next()
+                                .map(|command| match command.as_str() {
+                                    "remove" => Command::Remove,
+                                    _ => unreachable!(),
+                                })
+                                .unwrap();
+
+                            Token::Rename(Rename {
+                                command,
+                                patterns: iter
+                                    .map(|pair| match pair.as_rule() {
+                                        Rule::regex => Pattern::Regex(pair.as_str()),
+                                        Rule::str => Pattern::Str(pair.as_str()),
                                         _ => unreachable!(),
                                     })
-                                    .unwrap();
+                                    .collect(),
+                            })
+                        }
+                        _ => unreachable!(),
+                    })
+                    .collect();
 
-                                Node::Rename(RenameNode {
-                                    command,
-                                    patterns: iter
-                                        .map(|pair| match pair.as_rule() {
-                                            Rule::regex => Pattern::Regex(pair.as_str()),
-                                            Rule::str => Pattern::Str(pair.as_str()),
-                                            _ => unreachable!(),
-                                        })
-                                        .collect(),
-                                })
-                            }
-                            _ => unreachable!(),
-                        })
-                        .collect(),
-                );
+                Some(tokens)
             }
             Err(err) => {
                 eprintln!("Failed parsing, error is: {:}", err);
-                self.nodes = None;
+                None
             }
         }
     }
+}
 
-    pub fn run(&self) -> io::Result<()> {
-        if let Some(ref nodes) = self.nodes {
-            let path = if let Node::Path(path) = nodes
-                .iter()
-                .find(|n| matches!(n, Node::Path(_)))
-                .expect("must provide PATH node")
-            {
-                path
-            } else {
-                unreachable!()
-            };
+pub fn execute<'a>(tokens: Option<Vec<Token<'a>>>) -> io::Result<()> {
+    if let Some(ref nodes) = tokens {
+        let path = if let Token::Path(path) = nodes
+            .iter()
+            .find(|n| matches!(n, Token::Path(_)))
+            .expect("must provide PATH node")
+        {
+            path
+        } else {
+            unreachable!()
+        };
 
-            let target = if let Node::Target(target) = nodes
-                .iter()
-                .find(|n| matches!(n, Node::Target(_)))
-                .expect("must provide TARGET node")
-            {
-                target
-            } else {
-                unreachable!()
-            };
+        let target = if let Token::Target(target) = nodes
+            .iter()
+            .find(|n| matches!(n, Token::Target(_)))
+            .expect("must provide TARGET node")
+        {
+            target
+        } else {
+            unreachable!()
+        };
 
-            if matches!(target, Target::Content) {
-                unimplemented!()
-            }
+        if matches!(target, Target::Content) {
+            unimplemented!()
+        }
 
-            let pathbuf = get_canonicalize_path(path.as_ref());
-            let walkdir = WalkDir::new(pathbuf);
-            let output = File::create("workflow-results.olog").unwrap();
+        let pathbuf = get_canonicalize_path(path.as_ref());
+        let walkdir = WalkDir::new(pathbuf);
+        let output = File::create("workflow-results.olog").unwrap();
 
-            let mut stream = BufWriter::new(output);
+        let mut stream = BufWriter::new(output);
 
-            walkdir
-                .into_iter()
-                .filter_entry(|e| !is_hidden(e))
-                .for_each(|file| {
-                    if let Ok(pathbuf) = file.map(|f| f.into_path()) {
-                        let _x = nodes
+        walkdir
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e))
+            .for_each(|file| {
+                if let Ok(pathbuf) = file.map(|f| f.into_path()) {
+                    let final_pathbuf =
+                        nodes
                             .iter()
                             .fold::<Option<PathBuf>, _>(None, |input, node| {
                                 let pathbuf = if let Some(inner) = input {
@@ -159,13 +159,13 @@ impl<'a> Workflow<'a> {
                                 };
 
                                 let modified_pathbuf = match node {
-                                    Node::Path(_) | Node::Target(_) => None,
-                                    Node::Normalize(node) => match (&node.from, &node.to) {
+                                    Token::Path(_) | Token::Target(_) => None,
+                                    Token::Normalize(node) => match (&node.from, &node.to) {
                                         (Form::Nfc, Form::Nfd) => convert_to_nfd(&pathbuf),
                                         (Form::Nfd, Form::Nfc) => convert_to_nfc(&pathbuf),
                                         _ => None,
                                     },
-                                    Node::Recode(node) => {
+                                    Token::Recode(node) => {
                                         let (from, to) = node.encoding;
                                         let from = Encoding::for_label(from.as_bytes())
                                             .expect("from encoding isn't correct");
@@ -174,8 +174,8 @@ impl<'a> Workflow<'a> {
 
                                         change_encoding(from, to, &pathbuf)
                                     }
-                                    Node::Unbake => unbaking_mojibake(&pathbuf),
-                                    Node::Rename(node) => match node.command {
+                                    Token::Unbake => unbaking_mojibake(&pathbuf),
+                                    Token::Rename(node) => match node.command {
                                         Command::Remove => {
                                             remove_str_by_patterns(&node.patterns, &pathbuf)
                                         }
@@ -184,13 +184,22 @@ impl<'a> Workflow<'a> {
 
                                 modified_pathbuf.or(Some(pathbuf))
                             });
-                    }
-                });
 
-            stream.flush()?;
-        }
-        Ok(())
+                    if let Some(final_pathbuf) = final_pathbuf {
+                        if final_pathbuf != pathbuf {
+                            let from = pathbuf.to_str().unwrap();
+                            let to = pathbuf.to_str().unwrap();
+                            stream
+                                .write_all(format!("{from}=>{to}\n").as_bytes())
+                                .unwrap();
+                        }
+                    }
+                }
+            });
+
+        stream.flush()?;
     }
+    Ok(())
 }
 
 fn convert_to_nfc(path: &Path) -> Option<PathBuf> {
@@ -254,16 +263,16 @@ fn remove_str_by_patterns(patterns: &[Pattern], path: &Path) -> Option<PathBuf> 
     None
 }
 
-enum Node<'a> {
+pub enum Token<'a> {
     Path(&'a str),
     Target(Target),
-    Normalize(NormalizeNode),
-    Recode(RecodeNode<'a>),
+    Normalize(Normalize),
+    Recode(Recode<'a>),
     Unbake,
-    Rename(RenameNode<'a>),
+    Rename(Rename<'a>),
 }
 
-struct NormalizeNode {
+pub struct Normalize {
     from: Form,
     to: Form,
 }
@@ -273,16 +282,16 @@ enum Form {
     Nfc,
 }
 
-struct RecodeNode<'a> {
+pub struct Recode<'a> {
     encoding: (&'a str, &'a str),
 }
 
-enum Target {
+pub enum Target {
     Filename,
     Content,
 }
 
-struct RenameNode<'a> {
+pub struct Rename<'a> {
     command: Command,
     patterns: Vec<Pattern<'a>>,
 }
