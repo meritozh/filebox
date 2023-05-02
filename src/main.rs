@@ -5,7 +5,7 @@
 
 use clap::{command, Parser, Subcommand};
 use filebox::subcommand::{
-    normalize, run,
+    run,
     workflow::{self, execute},
 };
 
@@ -18,12 +18,6 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    #[command(about = "Normalize file name, convert NFD to NFC, force use UTF-8 encoding")]
-    Normalize {
-        #[arg(short, long)]
-        path: String,
-    },
-
     #[command(about = "Run commands from [<command>.filebox.commands] file")]
     Run {
         #[arg(short, long)]
@@ -41,9 +35,6 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Command::Normalize { path } => {
-            normalize::all_to_nfc_and_utf8(path).unwrap();
-        }
         Command::Run { path } => run::run(path),
         Command::Workflow { path } => {
             let workflow = workflow::Workflow::new(path);
