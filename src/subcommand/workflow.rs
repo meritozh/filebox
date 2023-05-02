@@ -22,7 +22,8 @@ pub struct Workflow {
     source_content: String,
 }
 
-const GARBLED_CHARS: &[&str] = &[""];
+const GARBLED_CHARS: &str = "&#";
+const OVER_DECODED_CHARS: &str = "&#";
 
 impl Workflow {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
@@ -232,6 +233,12 @@ fn change_encoding(from: &'static Encoding, to: &'static Encoding, path: &Path) 
     if let Some(filename) = path.file_name() {
         let (from_encoded, _, _) = from.encode(filename.to_str().unwrap());
         let (to_decoded, _, _) = to.decode(from_encoded.as_ref());
+
+        // if decoded twice, just throw result.
+        if to_decoded.contains(OVER_DECODED_CHARS) {
+            return None;
+        }
+
         return Some(path.with_file_name(to_decoded.to_string()));
     }
 
