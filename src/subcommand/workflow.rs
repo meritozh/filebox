@@ -22,7 +22,7 @@ pub struct Workflow {
     source_content: String,
 }
 
-const GARBLED_CHARS: &str = "&#";
+const GARBLED_CHARS: &str = "Ô½ÖÅÓÑ";
 const OVER_DECODED_CHARS: &str = "&#";
 
 impl Workflow {
