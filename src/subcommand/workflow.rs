@@ -14,6 +14,7 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use unicode_normalization::{is_nfc, is_nfd, is_nfkc, is_nfkd, UnicodeNormalization};
+use unicode_segmentation::UnicodeSegmentation;
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -22,8 +23,7 @@ pub struct Workflow {
     source_content: String,
 }
 
-const GARBLED_CHARS: &str = "Ô½ÖÅÓÑÄÈÕºÍ°×Ë¿¿ªµµÍàÁ";
-const OVER_DECODED_CHARS: &str = "&#";
+const GARBLED_CHARS: &str = "àªùÅÄÂÁÑËÈÍÏÑÑÖÓÔÕÒº°½¿×µ¬¹";
 
 impl Workflow {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
@@ -231,18 +231,13 @@ fn convert_to_nfd(path: &Path) -> Option<PathBuf> {
 
 fn change_encoding(from: &'static Encoding, to: &'static Encoding, path: &Path) -> Option<PathBuf> {
     if let Some(filename) = path.file_name() {
-        let chars = filename.to_str().unwrap().chars().collect::<Vec<_>>();
-        if !GARBLED_CHARS.chars().any(|ch| chars.contains(&ch)) {
+        let chars = filename.to_str().unwrap().graphemes(true).collect::<Vec<_>>();
+        if !GARBLED_CHARS.graphemes(true).any(|ch| chars.contains(&ch)) {
             return None;
         }
 
         let (from_encoded, _, _) = from.encode(filename.to_str().unwrap());
         let (to_decoded, _, _) = to.decode(from_encoded.as_ref());
-
-        // if decoded twice, just throw result.
-        if to_decoded.contains(OVER_DECODED_CHARS) {
-            return None;
-        }
 
         return Some(path.with_file_name(to_decoded.to_string()));
     }
