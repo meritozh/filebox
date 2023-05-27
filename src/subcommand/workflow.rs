@@ -7,7 +7,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use std::{fs::File, io::Read, path::Path};
 
-use crate::utils::{get_canonicalize_path, is_hidden};
+use crate::utils::{get_canonicalize_path, is_hidden, is_plain_txt};
 
 use encoding_rs::Encoding;
 use pest::Parser;
@@ -22,7 +22,7 @@ pub struct Workflow {
     source_content: String,
 }
 
-const GARBLED_CHARS: &str = "Ô½ÖÅÓÑ";
+const GARBLED_CHARS: &str = "Ô½ÖÅÓÑÄÈÕºÍ°×Ë¿¿ªµµÍàÁ";
 const OVER_DECODED_CHARS: &str = "&#";
 
 impl Workflow {
@@ -141,8 +141,8 @@ pub fn execute(tokens: Option<Vec<Token<'_>>>) -> io::Result<()> {
         }
 
         let pathbuf = get_canonicalize_path(path.as_ref());
+        let output = File::create(pathbuf.join("workflow-results.olog")).unwrap();
         let walkdir = WalkDir::new(pathbuf);
-        let output = File::create("workflow-results.olog").unwrap();
 
         let mut stream = BufWriter::new(output);
 
@@ -151,7 +151,7 @@ pub fn execute(tokens: Option<Vec<Token<'_>>>) -> io::Result<()> {
             .filter_entry(|e| !is_hidden(e))
             .for_each(|e| {
                 if let Ok(e) = e {
-                    if e.file_type().is_dir() {
+                    if e.file_type().is_dir() || !is_plain_txt(&e) {
                         return;
                     }
                     let pathbuf = e.into_path();
@@ -194,7 +194,7 @@ pub fn execute(tokens: Option<Vec<Token<'_>>>) -> io::Result<()> {
                     if let Some(final_pathbuf) = final_pathbuf {
                         if final_pathbuf != pathbuf {
                             let from = pathbuf.to_str().unwrap();
-                            let to = pathbuf.to_str().unwrap();
+                            let to = final_pathbuf.to_str().unwrap();
                             stream
                                 .write_all(format!("{from}=>{to}\n").as_bytes())
                                 .unwrap();
@@ -231,6 +231,11 @@ fn convert_to_nfd(path: &Path) -> Option<PathBuf> {
 
 fn change_encoding(from: &'static Encoding, to: &'static Encoding, path: &Path) -> Option<PathBuf> {
     if let Some(filename) = path.file_name() {
+        let chars = filename.to_str().unwrap().chars().collect::<Vec<_>>();
+        if !GARBLED_CHARS.chars().any(|ch| chars.contains(&ch)) {
+            return None;
+        }
+
         let (from_encoded, _, _) = from.encode(filename.to_str().unwrap());
         let (to_decoded, _, _) = to.decode(from_encoded.as_ref());
 

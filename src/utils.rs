@@ -7,6 +7,14 @@ use std::path::{Path, PathBuf};
 
 use walkdir::DirEntry;
 
+pub(crate) fn is_plain_txt(entry: &DirEntry) -> bool {
+    entry
+        .path()
+        .extension()
+        .map(|ext| ext == "txt")
+        .unwrap_or(false)
+}
+
 pub(crate) fn is_hidden(entry: &DirEntry) -> bool {
     entry
         .file_name()
